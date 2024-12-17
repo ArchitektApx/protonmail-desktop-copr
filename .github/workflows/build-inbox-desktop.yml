@@ -28,6 +28,7 @@ jobs:
           fi
 
           echo "INBOX_DESKTOP_VERSION=${INBOX_DESKTOP_VERSION}" >> $GITHUB_ENV
+          echo "INBOX_DESKTOP_VERSION=${INBOX_DESKTOP_VERSION}" >> $GITHUB_OUTPUT
           echo "INBOX_NEEDS_UPDATE=${INBOX_NEEDS_UPDATE}" >> $GITHUB_OUTPUT
       
       - name: Setup git bot
@@ -50,18 +51,27 @@ jobs:
         with:
           node-version: latest
           cache: 'yarn'
+          cache-dependency-path: WebClients/yarn.lock
 
+      - name: Apply Patches
+        if: steps.inbox_desktop_version.outputs.INBOX_NEEDS_UPDATE == 'true'
+        run: |
+          # apply all patches in the ./patches directory
+          for patch in $(ls patches/*.patch); do
+            patch -p1 < $patch
+          done
+          
       - name: Install Yarn
         if: steps.inbox_desktop_version.outputs.INBOX_NEEDS_UPDATE == 'true'
         run: |
           cd WebClients
           npm install -g yarn
-
+          yarn install --no-immutable
+          
       - name: Build inbox-desktop
         if: steps.inbox_desktop_version.outputs.INBOX_NEEDS_UPDATE == 'true'
         run: |
           cd WebClients
-          yarn install
           yarn workspace proton-inbox-desktop make --arch=arm64,x64
 
       - name: Collect Outputs
@@ -83,7 +93,9 @@ jobs:
           # get sha256sum of all files and format as markdown table (match until end of line to handle spaces in filenames)
           echo "## Checksums" >> release.md
           echo "| File | SHA256 |" >> release.md
-          sha256sum dist/* | sed -E 's/(.*)  (.*)/| \2 | \1 |/' >> release.md
+          echo "| --- | --- |" >> release.md
+          cd dist
+          sha256sum * | sed -E 's/(.*)  (.*)/| \2 | \1 |/' >> ../release.md
       
       - name: Publish Release
         if: steps.inbox_desktop_version.outputs.INBOX_NEEDS_UPDATE == 'true'
